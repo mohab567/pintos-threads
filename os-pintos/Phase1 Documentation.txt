@@ -1,0 +1,248 @@
+			+--------------------+
+			|        CS 333      |
+			| PROJECT 1: THREADS |
+			|   DESIGN DOCUMENT  |
+			+--------------------+
+				   
+---- GROUP ----
+
+Names :   Ahmed Reda Amin <09>
+ 	Mohab Mossad <74>
+	Mohammed Bakr <60>
+
+---- PRELIMINARIES ----
+
+
+>> Please cite any offline or online sources you consulted while
+   preparing your submission :
+	--http://math.hws.edu/eck/cs431/f16/assg5/index.html
+
+			     ALARM CLOCK
+			     ===========
+
+---- DATA STRUCTURES ----
+
+>> A1: static struct list sleeping_queue;
+	--The queue of threads that called sleep and are still sleeping.
+>>timer_sleep (int64_t ticks);
+	--The function call involves the thread adding itself to the sleeping queue and self-blocking.
+>>static void timer_interrupt (struct intr_frame *args UNUSED);
+	--The timer interrupt now calls the function wake_up_sleepers() every tick.
+>>void wake_up_sleepers(void);
+	--The wake_up_sleepers decrements the ticks of each thread by 1 each timer_interrupt , popping those who zeroed their timer.
+
+---- ALGORITHMS ----
+
+>> A2: When a thread calls timer_sleep() it sets the sleep tick of the thread to a number,
+	adds itself to the sleeping queue and then blocks itself .
+	The timer interrupt calls a wake sleepers function that decrements the thread ticks in the sleeping queue and pops those with zeroed ticks .
+
+>> A3: Simply not putting too much logic in the timer interrupt , for instance we didn`t order the sleeping queue , only popped when the ticks were  		zeroed , and left the ready_list organizing to the basic priority scheduler .
+
+---- SYNCHRONIZATION ----
+
+>> A4: We set the thread ticks variable first which is a data member specific for each thread , then disabled the interrupt for only two lines of
+	code and that is when the thread adds itself to the sleeping queue and when it blocks itself, ensuring no corruption in the list data .
+
+>> A5: Well , we assumed that the time between two timer ticks is more than suffecient for any sleeping threads to enter the sleeping state , that is
+	when timer interrupt calls the wakeup sleepers , all sleepers that registered in the previous tick would already start decrementing ticks
+	and we considered this to be an acceptable behaviour , It is obvious that an external interrupt such as the timer interrupt shouldn`t be 		delayed , so the time in which we disable interrupts for updates in the sleeping queue is very minimal and as soon as the interrupts are 
+	enabled again the timer interrupt handler is executed , even if some threads were still waiting to execute their sleep routine , again we
+	considered this an acceptable behaviour as we can`t delay the timer_interrupt until all sleeper threads in the previous tick have added 
+	themselves to the sleeper queue .
+
+---- RATIONALE ----
+
+>> A6: We chose this design because it is simple and effective , it does what is needed from it without any complexity in programming , and very few 		lines added , there were ideas like having special data structures like heaps and also another idea for having two levels of lists [one for 
+	sleepers , the other for threads popped in the same tick , so that they can be ordered by priority] , both ideas were rejected for adding 
+	too much complexity for no good reason , the heap was replaced by a linear search as the list is very small anyways and the two level queues 
+	functionality was just left to the simple priority scheduler of the pintos .
+
+			 PRIORITY SCHEDULING
+			 ===================
+
+---- DATA STRUCTURES ----
+
+>> B1: --In struct Lock we added a priority which is the highest priority of threads waiting for this lock 
+--In struct thread we added old_priority which is the priority of thread before donation
+-- and also added locks[8] and wlocks[8] which are the holded locks and waiting to hold locks respectively.
+>> B2: the data structures used in keeping track of priority donations are the two arrays locks and wlocks 
+in struct thread and we recursively update the tree of priorities when a thread aquires the lock 
+
+---- ALGORITHMS ----
+
+>> B3: we ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first by inserting in order (sorting) the semaphore waiting list
+and hence condition varuables and locks uses it then all of them will be sorted then we can pop the highest priority from the back.
+
+>> B4: when a lock aquire is called first check if the lock is held then update the lock and its holder then recersively 
+get the holder wlock and update it and there holders till u reach a lock held by a thread dont wait for any locks
+if no then just remove the lock from thread->wlocks and but it in thread->locks
+
+>> B5:  when lock_release() is called we remove the lock from thread-> locks then update the current thread priority
+to be either the max lock in locks or its old_priority
+
+
+---- SYNCHRONIZATION ----
+
+>> B6: at thread_set_priority we should yield the cpu since if we lowered the priority another thread should
+run first and no need for locks or any condition variables as there is no critical race here
+
+---- RATIONALE ----
+
+>> B7: we used this design as the number of locks is not huge so no need for nasted pointers of linked lists which decreases the preformance due to random access in memory but instead we used arrays for faster caching specially it doesnt exceed 1kb of memory
+to hold ponters of locks in it. 
+
+			  ADVANCED SCHEDULER
+			  ==================
+
+---- DATA STRUCTURES ----
+
+>> C1: Copy here the declaration of each new or changed `struct' or	
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+						--IN thread.h--
+
+> int nice;
+	-- the thead nice value in the thread struct.
+> int recent_cpu;
+	-- the recent cpu usage in the thread struct.
+> void thread_calculate_load_avg (void);
+	-- calculate the laod avrage vale from the equation "load_avg = (59/60)*load_avg + (1/60)*ready_threads".
+>void thread_calculate_recent_cpu_for_all (void);
+	-- calculate the recent cpu usage for all thread in the all_list.
+>void thread_calculate_priority_for_all (void);
+	-- calculate the priority for all thread in the all_list.
+
+						--IN thread.c--
+
+>int load_avg;
+	-- global variable for the avaerage load of the the cpu.
+>static void thread_calculate_priority_thread (struct thread *curr);
+	-- calculate the priority of this thread using the equation "priority = PRI_MAX - (th->recent_cpu / 4) - (th->nice * 2)".
+>recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice;
+	-- calculate the cpu usage of this thread using the equation "recent_cpu = (2*load_avg)/(2*load_avg + 1) * thr->recent_cpu + th->nice".
+
+						--IN read.h--
+
+> #define ADD_INT(x, y)
+	-- add fixed-point number "x" to integer number and the result will fixed point number.
+> #define CONVERT_TO_REAL(x)
+	-- convert the integer number to fixed point number.
+> #define CONVERT_TO_INT(x)
+	--convert the fixed-point number to the near int number.
+> #define MUL_REAL(x, y)
+	--multiple two fixed-point numbers and the result will be in fixed point representation.
+> #define DIV_REAL(x, y)
+	--divide two fixed-point numbers and the result will be in fixed point representation.
+
+						--IN timer.c--
+
+>tatic void timer_interrupt (struct intr_frame *args UNUSED):
+	--add code to calculate the laod average and the cpu recent usage for all thread in the system every second.
+	  code to calculate the priority for all thread in the system every 4 ticks.
+
+---- ALGORITHMS ----
+
+>> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
+>> has a recent_cpu value of 0.  Fill in the table below showing the
+>> scheduling decision and the priority and recent_cpu values for each
+>> thread after each given number of timer ticks:
+
+timer  recent_cpu   priority   thread
+ticks  A   B   C   A   B   C   to run
+----- --  --  --   --  --  --  ------
+0      0   0    0  63 61 59    A
+4      4   0    0  62 61 59    A
+8      8   0    0  61 61 59    A
+12     12  0    0  60 61 59    B
+16     12  4    0  60 60 59    B
+20     12  8    0  60 59 59    A
+24     16  8    0  59 59 59    A
+28     20  8    0  58 59 59    C
+32     20  8    4  58 59 58    B
+36     20  12   4  58 58 58    B
+
+>> C3: Did any ambiguities in the scheduler specification make values
+>> in the table uncertain?  If so, what rule did you use to resolve
+>> them?  Does this match the behavior of your scheduler?
+
+ Yes, it is unclear if two threads have equal priority, which thread is
+ supposed to run. I used the following rules:
+ --> If the scheduler has to choose between multiple ready threads, it
+     chooses the one that has been run the least recently (i.e. placed first
+     on the ready list).
+ -->This behavior matches my scheduler.
+
+>> C4: How is the way you divided the cost of scheduling between code
+>> inside and outside interrupt context likely to affect performance?
+ 
+--->Due to the precise nature in which the scheduler variables needed to be
+     updated, most of the computation needs to be done within the interrupt
+     handler.the currently priority for all threads need to be updated every 
+     4 ticks, Every second, however, the load average,recent_cpu and priority
+     has to be recalculated over all threads, which is expensive. Thus, for a
+     system with a lot of threads, this may be an inadvisable scheduling 
+     algorithm as it is likely to affect performance.
+
+---- RATIONALE ----
+
+>> C5: Briefly critique your design, pointing out advantages and
+>> disadvantages in your design choices.If you were to have extra
+>> time to work on this part of the project, how might you choose to
+>> refine or improve your design?
+-->Advantages:
+  -make sense of the future priority of the thread using the nice value 
+   and the cpue usage of this thread before.
+-->Disadvantages:
+  -make alote of the compution during the  interrupt context is expensive.
+   Thus, for a system with a lot of threads, this may be an inadvisable 
+   scheduling algorithm as it is likely to affect performance. 
+  -Ordered inserting and sorting lists takes O(n) and O(n log n)
+   respectively. Using binary tree / other more efficient data structures
+   may be needed. (Also, bad caching in linked lists)
+-->If i have extra time :
+  -i would look for algorithm to reduce the comptutions inside the interrupt
+   context that effect performance.
+
+>> C6: The assignment explains arithmetic for fixed-point math in
+>> detail, but it leaves it open to you to implement it.  Why did you
+>> decide to implement it the way you did?  If you created an
+>> abstraction layer for fixed-point math, that is, an abstract data
+>> type and/or a set of functions or macros to manipulate fixed-point
+>> numbers, why did you do so?  If not, why not?
+ 
+-->I implemented fixed-point math in a header file. The conversions between
+   integers and fixed-point and arithmetic was abstracted away in this
+   file. I used the standard functions as described in the Pintos
+   documentation and called these functions in my mlqfs calculation functions
+  in thread.c. Abstracting the fixed-point functions allowed for better
+  readability when calculating the mlqfs thread.c functions. i use macros
+  so this will take less time. 
+
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
+
